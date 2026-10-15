@@ -15,18 +15,33 @@ TEMPLATE = r'''<!doctype html>
 @media(prefers-color-scheme:dark){:root{--bg:#15191e;--fg:#edf1f5;--muted:#b2bdca;--line:#39414c;--soft:#20262e;--accent:#9fbeee}}
 *{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 system-ui,sans-serif}main{max-width:1100px;margin:auto;padding:32px 28px}h1{font-size:24px;margin:0 0 6px}h2{font-size:19px;margin:0 0 4px}p{margin:4px 0 16px;color:var(--muted)}.controls{display:flex;flex-wrap:wrap;gap:20px;align-items:end;margin:24px 0}label{display:grid;gap:6px;font-size:13px;font-weight:600}select,button{font:inherit;color:var(--fg);background:var(--bg);border:1px solid var(--line);padding:9px 12px;border-radius:5px}select{max-width:100%}button{margin-left:auto}section{margin:32px 0}.scroll{overflow-x:auto}table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}th,td{border-bottom:1px solid var(--line);padding:12px 15px;text-align:right;vertical-align:top}thead th{background:var(--soft);font-weight:600}th:first-child{text-align:left;white-space:nowrap}caption{text-align:left;font-size:12px;color:var(--muted);padding:6px 0 10px}.values{display:grid;gap:5px;min-width:125px}.value{display:flex;justify-content:space-between;gap:16px}.method{font-size:12px;color:var(--muted)}strong{font-weight:600}.note{font-size:12px;color:var(--muted);overflow-wrap:anywhere}#summary{font-size:13px}footer{border-top:1px solid var(--line);padding-top:14px}.unit{font-weight:400;color:var(--muted)}@media(max-width:600px){main{padding:20px 14px}.controls{display:grid;gap:12px}button{margin-left:0}th,td{padding:10px}.values{min-width:115px}}@media print{.controls{display:none}main{max-width:none;padding:0}section{break-inside:avoid}body{font-size:11px}.method{font-size:10px}.values{min-width:0}th,td{padding:6px}}
 </style></head><body><main>
-<h1>Closest pair benchmark results</h1><p>Three tables: median runtime, parallel efficiency, and speedup. Columns are point counts; rows are requested thread counts.</p>
-<div class="controls"><label>Benchmark run<select id="run">__OPTIONS__</select></label><label>Implementation<select id="method"><option value="all">All parallel implementations</option><option value="openmp">OpenMP</option><option value="tbb">Intel oneTBB</option><option value="pstl">C++ Parallel STL</option><option value="sequential">Sequential baseline</option></select></label><button id="print" type="button">Print / save PDF</button></div>
+<h1>Closest pair benchmark results</h1><p>Columns are point counts; rows are requested thread counts. Choose a metric baseline to distinguish thread scaling from comparison with sequential C++.</p>
+<div class="controls"><label>Benchmark run<select id="run">__OPTIONS__</select></label><label>Implementation<select id="method"><option value="all">All parallel implementations</option><option value="openmp">OpenMP</option><option value="tbb">Intel oneTBB</option><option value="pstl">C++ Parallel STL</option><option value="sequential">Sequential baseline</option></select></label><label>Metric baseline<select id="basis"><option value="scaling" __SCALING_SELECTED__>Same implementation at 1 thread</option><option value="sequential" __SEQUENTIAL_SELECTED__>Sequential C++ reference</option></select></label><button id="print" type="button">Print / save PDF</button></div>
 <p id="summary" aria-live="polite"></p><div id="tables">__TABLES__</div>
-<footer><p class="note">Runtime = median per-call time (batch-averaged for corrected runs). Speedup = sequential median / implementation median for the same point count and benchmark configuration. Efficiency = speedup / requested thread count × 100%. Sequential calculations always use one thread; its measurements can vary between configurations. Efficiency can exceed 100% because this is a timing ratio, not CPU utilization; values are not capped.</p><p id="source" class="note"></p></footer>
+<footer><p id="definitions" class="note">__DEFINITIONS__</p><p id="source" class="note"></p></footer>
 </main><script>
 const DATA = __DATA__;
 const names={openmp:'OpenMP',tbb:'Intel oneTBB',pstl:'C++ Parallel STL',sequential:'Sequential'};
-const metrics=[{key:'median_ms',title:'1. Median runtime',unit:'ms',digits:3,factor:1},{key:'efficiency',title:'2. Parallel efficiency',unit:'%',digits:2,factor:100},{key:'speedup',title:'3. Speedup',unit:'×',digits:3,factor:1}];
-const run=document.getElementById('run'),method=document.getElementById('method');
-function format(value,m){return (value*m.factor).toFixed(m.digits)+(m.key==='efficiency'?'%':m.key==='speedup'?'×':'');}
+function metricsFor(basis){return [
+ {key:'median_ms',title:'1. Median runtime',unit:'ms',digits:3,factor:1},
+ {key:basis==='scaling'?'scaling_efficiency':'efficiency',title:basis==='scaling'?'2. Thread scaling efficiency':'2. Efficiency vs sequential C++',unit:'%',digits:2,factor:100},
+ {key:basis==='scaling'?'scaling_speedup':'speedup',title:basis==='scaling'?'3. Thread scaling speedup':'3. Speedup vs sequential C++',unit:'×',digits:3,factor:1}];}
+const run=document.getElementById('run'),method=document.getElementById('method'),basis=document.getElementById('basis');
+function format(value,m){return (value*m.factor).toFixed(m.digits)+(m.unit==='%'?'%':m.unit==='×'?'×':'');}
 function render(){
- const d=DATA[run.value],methods=method.value==='all'?['openmp','tbb','pstl']:[method.value];
+ const d=DATA[run.value];
+ basis.options[0].disabled=!d.scaling_available;
+ if(basis.value==='scaling'&&!d.scaling_available)basis.value='sequential';
+ const scaling=basis.value==='scaling';
+ const sequentialOption=method.querySelector('option[value="sequential"]');
+ sequentialOption.disabled=scaling;
+ if(scaling&&method.value==='sequential')method.value='all';
+ const methods=method.value==='all'?['openmp','tbb','pstl']:[method.value];
+ const metrics=metricsFor(basis.value);
+ document.getElementById('definitions').textContent=scaling
+  ? 'Runtime = median per-call time. Thread scaling speedup = this implementation at 1 thread / this implementation at p threads, for the same point count and dataset. Thread scaling efficiency = that speedup / p × 100%. One-thread values are 1× and 100% by definition. These are measured ratios; superlinear results can still exceed 100%. No measured values are capped.'
+  : 'Runtime = median per-call time. Speedup = sequential C++ median / implementation median from the same benchmark configuration. Efficiency = that speedup / requested thread count × 100%. A one-thread implementation can measure faster than the separate sequential reference, giving more than 100% without a benefit from adding threads. No measured values are capped.';
+ if(!d.scaling_available)document.getElementById('definitions').textContent+=' Thread scaling requires one-thread measurements in this run.';
  document.getElementById('summary').textContent=`${d.points.map(n=>n.toLocaleString()).join(' / ')} points · ${d.threads.join(' / ')} requested threads · ${d.repeats.join(' / ')} timed samples · ${d.warmups.join(' / ')} warmup runs`;
  document.getElementById('source').textContent='Source: '+d.source+' · Compiler: '+d.compilers.join(', ')+' · Timing: '+(d.protocols.includes('interleaved_batched_v2')?'updated interleaved batches':'legacy short sequential-first samples (susceptible to timing drift)');
  const container=document.getElementById('tables');container.replaceChildren();
@@ -44,12 +59,13 @@ function render(){
   }table.append(body);scroll.append(table);section.append(scroll);container.append(section);
  }
 }
-run.addEventListener('change',render);method.addEventListener('change',render);document.getElementById('print').addEventListener('click',()=>window.print());render();
+run.addEventListener('change',render);method.addEventListener('change',render);basis.addEventListener('change',render);document.getElementById('print').addEventListener('click',()=>window.print());render();
 </script></body></html>
 '''
 
 def load(folder):
     cells = {}
+    identities = {}
     protocols = set()
     points, threads, repeats, warmups, compilers = set(), set(), set(), set(), set()
     for path in sorted(folder.glob('n*_t*.csv')):
@@ -58,9 +74,11 @@ def load(folder):
         n, t = map(int, match.groups())
         with path.open(newline='') as f: rows = list(csv.DictReader(f))
         algorithms = {}
+        file_identities = set()
         for row in rows:
             if int(row['points']) != n: raise ValueError(f'Point-count mismatch: {path}')
             protocols.add(row.get('timing_protocol','legacy_short_separate_samples'))
+            file_identities.add((row['source'],row['seed']))
             a = row['algorithm']
             if a in algorithms: raise ValueError(f'Duplicate implementation: {path}')
             expected_workers = 1 if a == 'sequential' else t
@@ -74,14 +92,30 @@ def load(folder):
             speed = algorithms['sequential']['median_ms']/values['median_ms']
             if not math.isclose(speed,values['speedup'],rel_tol=1e-10): raise ValueError(f'Invalid speedup: {path}')
             if not math.isclose(values['efficiency'],speed/(1 if a=='sequential' else t),rel_tol=1e-10): raise ValueError(f'Invalid efficiency: {path}')
+        if len(file_identities) != 1: raise ValueError(f'Mixed datasets in {path}')
+        identities[f'{t}:{n}'] = next(iter(file_identities))
         cells[f'{t}:{n}'] = algorithms;points.add(n);threads.add(t)
     if not cells: raise ValueError(f'No benchmark CSVs in {folder}')
     if len(cells) != len(points)*len(threads): raise ValueError(f'Incomplete thread/point grid: {folder}')
-    return {'source':str(folder.resolve()),'protocols':sorted(protocols),'points':sorted(points),'threads':sorted(threads),'repeats':sorted(repeats),'warmups':sorted(warmups),'compilers':sorted(compilers),'cells':cells}
+    scaling_available = 1 in threads
+    if scaling_available:
+        for t in threads:
+            for n in points:
+                if identities[f'{t}:{n}'] != identities[f'1:{n}']:
+                    raise ValueError(f'Thread scaling requires matching datasets and seeds: {folder}, n={n}')
+                for a in ('openmp','tbb','pstl'):
+                    current = cells[f'{t}:{n}'][a]
+                    baseline = cells[f'1:{n}'][a]['median_ms']
+                    current['scaling_speedup'] = baseline / current['median_ms']
+                    current['scaling_efficiency'] = current['scaling_speedup'] / t
+    return {'scaling_available':scaling_available,'source':str(folder.resolve()),'protocols':sorted(protocols),'points':sorted(points),'threads':sorted(threads),'repeats':sorted(repeats),'warmups':sorted(warmups),'compilers':sorted(compilers),'cells':cells}
 
 def static_tables(d):
     sections=[]
-    for key,title,unit,digits,factor in [('median_ms','1. Median runtime','ms',3,1),('efficiency','2. Parallel efficiency','%',2,100),('speedup','3. Speedup','×',3,1)]:
+    prefix = 'scaling_' if d['scaling_available'] else ''
+    efficiency_title = '2. Thread scaling efficiency' if prefix else '2. Efficiency vs sequential C++'
+    speedup_title = '3. Thread scaling speedup' if prefix else '3. Speedup vs sequential C++'
+    for key,title,unit,digits,factor in [('median_ms','1. Median runtime','ms',3,1),(prefix+'efficiency',efficiency_title,'%',2,100),(prefix+'speedup',speedup_title,'×',3,1)]:
         text=f'<section><h2>{title} ({unit})</h2><div class="scroll"><table><caption>OpenMP / Intel oneTBB / C++ Parallel STL · Rows: requested threads · Columns: number of points</caption><thead><tr><th scope="col">Threads / points</th>'
         text+=''.join(f'<th scope="col">{n:,}</th>' for n in d['points'])+'</tr></thead><tbody>'
         for t in d['threads']:
@@ -90,7 +124,7 @@ def static_tables(d):
                 text+='<td><div class="values">'
                 for a,name in [('openmp','OpenMP'),('tbb','Intel oneTBB'),('pstl','C++ Parallel STL')]:
                     value=d['cells'][f'{t}:{n}'][a][key]*factor
-                    suffix='%' if key=='efficiency' else '×' if key=='speedup' else ''
+                    suffix='%' if unit=='%' else '×' if unit=='×' else ''
                     text+=f'<div class="value"><span class="method">{name}</span><strong>{value:.{digits}f}{suffix}</strong></div>'
                 text+='</div></td>'
             text+='</tr>'
@@ -109,6 +143,10 @@ def main():
     latest=sorted(data)[-1]
     options=''.join(f'<option value="{html.escape(name,quote=True)}"'+(' selected' if name==latest else '')+f'>{html.escape(name)}</option>' for name in sorted(data,reverse=True))
     output=TEMPLATE.replace('__OPTIONS__',options).replace('__TABLES__',static_tables(data[latest])).replace('__DATA__',json.dumps(data,separators=(',',':')).replace('</','<\\/'))
+    scaling = data[latest]['scaling_available']
+    definition = ('Thread scaling speedup = this implementation at 1 thread / this implementation at p threads. Thread scaling efficiency = that speedup / p × 100%. One-thread values are 1× and 100% by definition.' if scaling else 'Speedup = sequential C++ median / implementation median. Efficiency = that speedup / requested thread count × 100%.')
+    definition += ' Runtime = median per-call time. Metrics are measured ratios and are not capped.'
+    output = output.replace('__SCALING_SELECTED__','selected' if scaling else '').replace('__SEQUENTIAL_SELECTED__','' if scaling else 'selected').replace('__DEFINITIONS__',html.escape(definition))
     args.output.parent.mkdir(parents=True,exist_ok=True)
     args.output.write_text(output,encoding='utf-8')
     print(f'Created {args.output.resolve()} with three tables and {len(data)} benchmark runs.')

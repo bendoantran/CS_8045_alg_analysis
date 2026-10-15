@@ -59,6 +59,8 @@ if(BUILD_TESTING)
   set_tests_properties(invalid_points PROPERTIES WILL_FAIL TRUE)
   find_package(Python3 QUIET COMPONENTS Interpreter)
   if(Python3_Interpreter_FOUND)
+    add_test(NAME table_metrics COMMAND ${Python3_EXECUTABLE}
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/table_metrics.py)
     add_test(NAME benchmark_csv COMMAND ${Python3_EXECUTABLE}
       ${CMAKE_CURRENT_SOURCE_DIR}/tests/benchmark_csv.py $<TARGET_FILE:benchmark>)
   endif()
