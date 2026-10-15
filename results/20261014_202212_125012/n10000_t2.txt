@@ -1,0 +1,8 @@
+Compiler: 13.3.0; Parallel STL: libstdc++/oneTBB
+Points: 10000; parallel worker limit: 2; repeats: 5; warmups: 1
+Closest pair (zero-based): (6916, 9331); distance: 291.4300880641274
+Coordinates: (174759.63629192169, -602535.72477502003) and (174728.60869475527, -602825.4984529881)
+sequential: 31.693 ms (min 31.177, max 32.220), speedup 1.000x; checked
+openmp: 15.930 ms (min 15.835, max 15.988), speedup 1.990x; checked
+tbb: 16.051 ms (min 15.944, max 16.341), speedup 1.975x; checked
+pstl: 16.183 ms (min 16.141, max 16.254), speedup 1.958x; checked

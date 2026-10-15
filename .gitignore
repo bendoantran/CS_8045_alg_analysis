@@ -1,0 +1,17 @@
+build*/
+results/*
+!results/.gitkeep
+__pycache__/
+
+# Keep the completed benchmark reports; omit machine-specific CMake cache dumps.
+!results/benchmark_tables.html
+!results/20261014_202212_125012/
+!results/20261014_204015_132428/
+results/20261014_202212_125012/*
+results/20261014_204015_132428/*
+!results/20261014_202212_125012/*.csv
+!results/20261014_202212_125012/*.txt
+!results/20261014_204015_132428/*.csv
+!results/20261014_204015_132428/*.txt
+results/*/environment.txt
+*.pyc
