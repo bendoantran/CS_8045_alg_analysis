@@ -18,7 +18,7 @@ TEMPLATE = r'''<!doctype html>
 <h1>Closest pair benchmark results</h1><p>Three tables: median runtime, parallel efficiency, and speedup. Columns are point counts; rows are requested thread counts.</p>
 <div class="controls"><label>Benchmark run<select id="run">__OPTIONS__</select></label><label>Implementation<select id="method"><option value="all">All parallel implementations</option><option value="openmp">OpenMP</option><option value="tbb">Intel oneTBB</option><option value="pstl">C++ Parallel STL</option><option value="sequential">Sequential baseline</option></select></label><button id="print" type="button">Print / save PDF</button></div>
 <p id="summary" aria-live="polite"></p><div id="tables">__TABLES__</div>
-<footer><p class="note">Runtime = median of the timed samples. Speedup = sequential median / implementation median for the same point count and benchmark configuration. Efficiency = speedup / requested thread count × 100%. Sequential calculations always use one thread; its measurements can vary between configurations.</p><p id="source" class="note"></p></footer>
+<footer><p class="note">Runtime = median per-call time (batch-averaged for corrected runs). Speedup = sequential median / implementation median for the same point count and benchmark configuration. Efficiency = speedup / requested thread count × 100%. Sequential calculations always use one thread; its measurements can vary between configurations. Efficiency can exceed 100% because this is a timing ratio, not CPU utilization; values are not capped.</p><p id="source" class="note"></p></footer>
 </main><script>
 const DATA = __DATA__;
 const names={openmp:'OpenMP',tbb:'Intel oneTBB',pstl:'C++ Parallel STL',sequential:'Sequential'};
@@ -27,8 +27,8 @@ const run=document.getElementById('run'),method=document.getElementById('method'
 function format(value,m){return (value*m.factor).toFixed(m.digits)+(m.key==='efficiency'?'%':m.key==='speedup'?'×':'');}
 function render(){
  const d=DATA[run.value],methods=method.value==='all'?['openmp','tbb','pstl']:[method.value];
- document.getElementById('summary').textContent=`${d.points.map(n=>n.toLocaleString()).join(' / ')} points · ${d.threads.join(' / ')} requested threads · ${d.repeats.join(' / ')} timed runs · ${d.warmups.join(' / ')} warmup runs`;
- document.getElementById('source').textContent='Source: '+d.source+' · Compiler: '+d.compilers.join(', ');
+ document.getElementById('summary').textContent=`${d.points.map(n=>n.toLocaleString()).join(' / ')} points · ${d.threads.join(' / ')} requested threads · ${d.repeats.join(' / ')} timed samples · ${d.warmups.join(' / ')} warmup runs`;
+ document.getElementById('source').textContent='Source: '+d.source+' · Compiler: '+d.compilers.join(', ')+' · Timing: '+(d.protocols.includes('interleaved_batched_v2')?'updated interleaved batches':'legacy short sequential-first samples (susceptible to timing drift)');
  const container=document.getElementById('tables');container.replaceChildren();
  for(const m of metrics){
   const section=document.createElement('section'),heading=document.createElement('h2');heading.textContent=m.title+' ('+m.unit+')';section.append(heading);
@@ -50,6 +50,7 @@ run.addEventListener('change',render);method.addEventListener('change',render);d
 
 def load(folder):
     cells = {}
+    protocols = set()
     points, threads, repeats, warmups, compilers = set(), set(), set(), set(), set()
     for path in sorted(folder.glob('n*_t*.csv')):
         match = re.fullmatch(r'n(\d+)_t(\d+)\.csv', path.name)
@@ -59,6 +60,7 @@ def load(folder):
         algorithms = {}
         for row in rows:
             if int(row['points']) != n: raise ValueError(f'Point-count mismatch: {path}')
+            protocols.add(row.get('timing_protocol','legacy_short_separate_samples'))
             a = row['algorithm']
             if a in algorithms: raise ValueError(f'Duplicate implementation: {path}')
             expected_workers = 1 if a == 'sequential' else t
@@ -75,7 +77,7 @@ def load(folder):
         cells[f'{t}:{n}'] = algorithms;points.add(n);threads.add(t)
     if not cells: raise ValueError(f'No benchmark CSVs in {folder}')
     if len(cells) != len(points)*len(threads): raise ValueError(f'Incomplete thread/point grid: {folder}')
-    return {'source':str(folder.resolve()),'points':sorted(points),'threads':sorted(threads),'repeats':sorted(repeats),'warmups':sorted(warmups),'compilers':sorted(compilers),'cells':cells}
+    return {'source':str(folder.resolve()),'protocols':sorted(protocols),'points':sorted(points),'threads':sorted(threads),'repeats':sorted(repeats),'warmups':sorted(warmups),'compilers':sorted(compilers),'cells':cells}
 
 def static_tables(d):
     sections=[]

@@ -15,3 +15,10 @@ results/20261014_204015_132428/*
 !results/20261014_204015_132428/*.txt
 results/*/environment.txt
 *.pyc
+
+# Corrected timing sweep.
+!results/20261014_210045_142461/
+results/20261014_210045_142461/*
+!results/20261014_210045_142461/*.csv
+!results/20261014_210045_142461/*.txt
+results/20261014_210045_142461/environment.txt

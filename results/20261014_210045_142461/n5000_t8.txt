@@ -1,0 +1,9 @@
+Compiler: 13.3.0; Parallel STL: libstdc++/oneTBB
+Points: 5000; parallel worker limit: 8; repeats: 9; warmups: 3
+Timing: rotating interleaved batches; target sample duration: 25 ms
+Closest pair (zero-based): (473, 2704); distance: 465.59925866550111
+Coordinates: (-77176.934573717444, 153936.93843070322) and (-77633.569486275315, 153846.01414185183)
+sequential: 7.977 ms (min 7.841, max 13.123), speedup 1.000x; efficiency 100.000%; 4 calls/sample; checked
+openmp: 1.214 ms (min 1.092, max 1.534), speedup 6.569x; efficiency 82.113%; 32 calls/sample; checked
+tbb: 1.058 ms (min 1.051, max 1.163), speedup 7.541x; efficiency 94.259%; 32 calls/sample; checked
+pstl: 1.048 ms (min 1.047, max 1.192), speedup 7.613x; efficiency 95.158%; 16 calls/sample; checked

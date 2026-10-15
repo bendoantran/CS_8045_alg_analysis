@@ -131,7 +131,7 @@ Run all four on the same data:
 ./build/benchmark --help
 ```
 
-Defaults: 10,000 points, seed 42, one warmup, five timed repeats, and the worker count reported by the OpenMP runtime (which respects the OpenMP environment when `--threads` is absent). `--threads` must be >=1 and explicitly sets the OpenMP team request and oneTBB worker cap. The cap is **not a measurement of how many workers actually ran**; runtimes may use fewer.
+Defaults: 10,000 points, seed 42, three warmups, nine timed batches, and the worker count reported by the OpenMP runtime (which respects the OpenMP environment when `--threads` is absent). `--threads` must be >=1 and explicitly sets the OpenMP team request and oneTBB worker cap. The cap is **not a measurement of how many workers actually ran**; runtimes may use fewer.
 
 ## Use your own points
 
@@ -147,18 +147,19 @@ Coordinates must be finite doubles with magnitude <=1e150, preventing overflow i
 
 ## Benchmark methodology and comparison
 
-The driver uses `std::chrono::steady_clock`. It generates/loads and validates the data, prepares row indices, and configures worker caps **outside** the timed interval. Each measured interval includes the full kernel call, its task scheduling and reductions. Runtime initialization can affect first runs; warmups reduce that effect. Each warmup and measured result must exactly match an independently obtained sequential result, including indices.
+The driver uses `std::chrono::steady_clock` and rotates implementation order between measurement rounds. It generates/loads and validates the data, prepares row indices, and configures worker caps **outside** the timed interval. Each measured interval includes a calibrated batch of full kernel calls, their task scheduling, reductions, and an O(1) result check after each call. Calibration targets at least 25 ms per batch before measurement; `--min-sample-ms` controls that target. The duration is divided by the number of calls to obtain a per-call sample. Calibration and warmups are discarded. Runtime initialization and CPU scheduling/frequency changes can affect first runs; warmups and longer interleaved samples reduce that effect. Each warmup and measured result must exactly match an independently obtained sequential result, including indices.
 
-Output reports median, minimum, and maximum milliseconds and speedup. CSV also stores every timed sample, seed/source, compiler version, worker limit, closest-pair indices/distance, and efficiency. Formulas:
+Output reports the median, minimum, and maximum of the batch-averaged per-call times in milliseconds, speedup, and efficiency. CSV records `timing_protocol`, `sample_iterations`, and `min_sample_ms` so the measurement method is explicit. CSV also stores every timed sample, seed/source, compiler version, worker limit, closest-pair indices/distance, and efficiency. Formulas:
 
 ```text
 speedup = sequential median / parallel median
-efficiency = speedup / requested worker limit
+efficiency (CSV fraction) = speedup / requested worker limit
+efficiency (%) = 100 * speedup / requested worker limit
 ```
 
-Efficiency uses the requested cap, not an observed worker count. It is not CPU utilization. Speedup below one means the parallel version was slower in that run.
+Efficiency uses the requested cap, not an observed worker count. It is not CPU utilization or a percentage physically bounded by 100%. Measured efficiency can exceed 100% if speedup exceeds the worker count (superlinear speedup), due to cache effects, differences in generated code, or measurement variability. A one-thread backend can also run slightly faster than the sequential implementation without gaining anything from parallelism. Values are never clamped; investigate large excursions and sample variability. These metrics compare each backend to the separate sequential implementation; same-backend strong scaling would instead compare that backend at one worker with itself at p workers. Speedup below one means the parallel version was slower in that run.
 
-The sequential measurements precede the selected parallel methods (OpenMP, oneTBB, then Parallel STL). Cache state, thermal drift, and fixed ordering can bias small differences. For careful experiments repeat whole benchmark processes, alternate method order with `--algorithm` across runs, use sufficiently large data, and report variability. Run on an otherwise idle machine, use Release builds, document hardware/compiler/library versions, and avoid worker limits exceeding available cores unless studying oversubscription. Small workloads often show little speedup because scheduling dominates.
+Measurement rounds interleave the selected methods and rotate which one runs first. Earlier saved runs without a `timing_protocol` field used five short, separate samples with the sequential method first; those historical results can contain inflated speedup and efficiency from timing drift. Keep them as historical measurements rather than treating them as the corrected protocol. Repeat whole benchmark processes, use sufficiently large data, and report variability. Run on an otherwise idle machine, use Release builds, document hardware/compiler/library versions, and avoid worker limits exceeding available cores unless studying oversubscription. Small workloads often show little speedup because scheduling dominates.
 
 **All four algorithms remain O(n²) time**; parallelism distributes work across cores. Input storage and the shared row-index vector use O(n) memory; thread/task reductions add runtime-dependent temporary storage. The sequential kernel itself uses O(1) extra space. Doubling n approximately quadruples the pair count. Start small before using very large n.
 
@@ -214,3 +215,19 @@ python3 scripts/make_tables.py results/20261014_202212_125012
 ```
 
 Open `results/benchmark_tables.html` in a browser. This uses only Python's standard library and embeds all table data in the report, so it also works offline. Regenerate it after a new experiment run. Efficiency uses the sequential baseline from the same configuration and the requested worker limit.
+
+### Timing correction
+
+The large >100% efficiencies in the original 1,000-point data were traced to unstable short sequential-first samples. For example, run `20261014_204015_132428/n1000_t1.csv` records a 0.743694 ms sequential median and 0.375090 ms OpenMP median, yielding 198.27% at one requested worker. The sequential samples themselves ranged down to 0.376417 ms. This is evidence of unstable timing; it does not demonstrate a benefit from multiple threads. The exact OS/CPU cause was not isolated.
+
+The current driver uses interleaved measurement rounds and calibrated batches, and the experiment defaults are nine samples, three warmups, and a 25 ms calibration target. Run a fresh sweep and regenerate the tables:
+
+```bash
+bash scripts/setup.sh --fetch-tbb
+REPEATS=9 WARMUPS=3 MIN_SAMPLE_MS=25 bash scripts/run_experiments.sh
+python3 scripts/make_tables.py
+```
+
+References: [Cornell: speedup and efficiency](https://www.cs.cornell.edu/courses/cs5220/2020fa/lec/2020-09-08-perf-basics.html), [Cornell: superlinear speedup and cache effects](https://cvw.cac.cornell.edu/scalability/scalability-speedup/faster-or-more), and [Google Benchmark: minimum runtime and warmup](https://github.com/google/benchmark/blob/main/docs/user_guide.md).
+
+The corrected sweep is saved in `results/20261014_210045_142461/`: all 16 configurations passed result comparisons, and all six CTest tests passed, including CSV checks for batching metadata, even/odd medians, and the unmodified speedup/efficiency formulas. At 1,000 points and one requested worker, the fresh OpenMP result was 0.367941 ms against a 0.367826 ms sequential median (99.97% efficiency), compared with 198.27% in the unstable old run. These are observed values for this run, not guarantees about future timings.
